@@ -40,8 +40,8 @@ def choose_answer_translation(answer, answer_az, sentence_az):
     if answer_norm and answer_norm in sentence_az_norm:
         return answer
 
-    if sentence_az:
-        return sentence_az
+    # if sentence_az:
+    #     return sentence_az
 
     return answer_az
 
