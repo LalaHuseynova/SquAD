@@ -1,58 +1,87 @@
 import json
+from difflib import SequenceMatcher
 
 INPUT_FILE = "translated_only_az.json"
 OUTPUT_FILE = "translated_with_answer_start_az.json"
 
 
 def normalize_text(text):
-    # Mətn boşdursa, boş string qaytar
     if not text:
         return ""
 
-    # Kiçik hərfə çevir, sətir sonlarını və artıq boşluqları sil
     text = text.lower().strip()
     text = " ".join(text.split())
-
-    # Dırnaq işarələrini eyniləşdir
     text = text.replace("“", '"').replace("”", '"')
     text = text.replace("‘", "'").replace("’", "'")
-
     return text
 
 
-def find_answer_start_az(context_az, answer_az, sentence_az):
-    # Kontekst və cavab yoxdursa, tapmaq mümkün deyil
-    if not context_az or not answer_az:
+def similarity(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def approximate_char_match(context, candidate, threshold=0.82):
+    if not context or not candidate:
         return -1
 
-    # Əvvəl orijinal mətndə exact search et
-    idx = context_az.find(answer_az)
-    if idx != -1:
-        return idx
+    best_idx = -1
+    best_score = 0.0
+    n = len(candidate)
 
-    # Normalize olunmuş formada axtar
+    min_len = max(1, n - 5)
+    max_len = min(len(context), n + 5)
+
+    for window_size in range(min_len, max_len + 1):
+        for i in range(len(context) - window_size + 1):
+            chunk = context[i:i + window_size]
+            score = similarity(chunk.lower(), candidate.lower())
+
+            if score > best_score:
+                best_score = score
+                best_idx = i
+
+    if best_score >= threshold:
+        return best_idx
+
+    return -1
+
+
+def generate_candidates(answer, answer_az):
+    candidates = []
+
+    for x in [answer_az, answer]:
+        if x and x not in candidates:
+            candidates.append(x)
+
+    return candidates
+
+
+def find_answer_start_az(context_az, answer, answer_az):
+    if not context_az:
+        return -1
+
+    candidates = generate_candidates(answer, answer_az)
+
+    # 1. exact search
+    for candidate in candidates:
+        idx = context_az.find(candidate)
+        if idx != -1:
+            return idx
+
+    # 2. normalized search
     context_norm = normalize_text(context_az)
-    answer_norm = normalize_text(answer_az)
-    sentence_norm = normalize_text(sentence_az)
 
-    # 1. Cavabı bütün kontekstdə axtar
-    idx_norm = context_norm.find(answer_norm)
-    if idx_norm != -1:
-        return idx_norm
+    for candidate in candidates:
+        candidate_norm = normalize_text(candidate)
+        idx = context_norm.find(candidate_norm)
+        if idx != -1:
+            return idx
 
-    # 2. Əgər cümlə varsa, əvvəl cümləni kontekstdə tap, “Əgər mən cavab olan cümləni context-də tapsam, onda cavabı həmin cümlənin içindən çıxararam
-    if sentence_norm:
-        sentence_idx = context_norm.find(sentence_norm)
-
-        if sentence_idx != -1:
-            # Sonra cavabı cümlənin içində axtar
-            local_idx = sentence_norm.find(answer_norm)
-
-            if local_idx != -1:
-                return sentence_idx + local_idx
-
-            # Cavab tapılmasa, heç olmasa cümlənin başlanğıcını qaytar
-            return sentence_idx
+    # 3. char-by-char approximate search
+    for candidate in candidates:
+        idx = approximate_char_match(context_az, candidate, threshold=0.82)
+        if idx != -1:
+            return idx
 
     return -1
 
@@ -62,8 +91,6 @@ def process_file(input_file, output_file):
         data = json.load(f)
 
     updated_data = []
-
-    # counters
     total = 0
     failed = 0
 
@@ -71,27 +98,24 @@ def process_file(input_file, output_file):
         print(f"Processing {i}/{len(data)} - {item.get('id', '')}")
 
         context_az = item.get("context_az", "")
+        answer = item.get("answer", "")
         answer_az = item.get("answer_az", "")
-        sentence_az = item.get("sentence_with_answer_az", "")
 
-        answer_start_az = find_answer_start_az(context_az, answer_az, sentence_az)
-
-        # count
-        total += 1
-        if answer_start_az == -1:
-            failed += 1
+        answer_start_az = find_answer_start_az(context_az, answer, answer_az)
 
         item["answer_start_az"] = answer_start_az
         updated_data.append(item)
+
+        total += 1
+        if answer_start_az == -1:
+            failed += 1
 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(updated_data, f, indent=2, ensure_ascii=False)
 
     print(f"Done. Saved to {output_file}")
-
-    print("\n===== RESULTS =====")
     print(f"Total: {total}")
-    print(f"Failed (-1): {failed}")
+    print(f"Failed: {failed}")
     print(f"Success: {total - failed}")
     print(f"Accuracy: {(total - failed) / total * 100:.2f}%")
 

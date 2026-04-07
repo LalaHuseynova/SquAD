@@ -3,7 +3,7 @@ import json
 
 INPUT_FILE = "train-v1.1.json"
 OUTPUT_FILE = "train_50_simple.json"
-LIMIT = 50
+LIMIT = 100
 
 simplified_data = []
 
