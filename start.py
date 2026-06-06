@@ -100,6 +100,7 @@ def find_answer_start_az(context_az, answer, answer_az):
     # heç biri tapılmadısa
     return -1
 
+# after findign -1 answers translate back the sentence_with_answer_az back to eng and go word by word if you find the wod combination which is when trans;ted to english with the same answer of "answer" 
 
 def process_file(input_file, output_file):
     with open(input_file, "r", encoding="utf-8") as f:
